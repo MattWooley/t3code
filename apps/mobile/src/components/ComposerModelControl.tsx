@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ModelSelection, ProviderDriverKind } from "@t3tools/contracts";
 import {
   buildTraitsTriggerDisplay,
@@ -19,6 +20,8 @@ export function ComposerModelControl(props: {
   readonly disabled?: boolean;
   readonly size?: "regular" | "large";
   readonly iconOnly?: boolean;
+  /** Drawn over the corner of the provider icon. */
+  readonly iconBadge?: ReactNode;
   readonly onPress: () => void;
 }) {
   const descriptors = resolveProviderOptionDescriptors({
@@ -59,25 +62,28 @@ export function ComposerModelControl(props: {
       size={props.size}
       disabled={props.disabled}
       emphasized
-      renderIcon={(size) =>
-        badge?.showBadge ? (
-          <ProviderInstanceIcon
-            iconUrl={props.modelOption?.providerIconUrl}
-            provider={props.modelOption?.providerDriver}
-            displayName={badge.displayName}
-            accentColor={badge.accentColor}
-            showBadge
-            surfaceColor={props.surfaceColor}
-            size={size}
-          />
-        ) : (
-          <ProviderIcon
-            iconUrl={props.modelOption?.providerIconUrl}
-            provider={props.modelOption?.providerDriver}
-            size={size}
-          />
-        )
-      }
+      renderIcon={(size) => (
+        <>
+          {badge?.showBadge ? (
+            <ProviderInstanceIcon
+              iconUrl={props.modelOption?.providerIconUrl}
+              provider={props.modelOption?.providerDriver}
+              displayName={badge.displayName}
+              accentColor={badge.accentColor}
+              showBadge
+              surfaceColor={props.surfaceColor}
+              size={size}
+            />
+          ) : (
+            <ProviderIcon
+              iconUrl={props.modelOption?.providerIconUrl}
+              provider={props.modelOption?.providerDriver}
+              size={size}
+            />
+          )}
+          {props.iconBadge}
+        </>
+      )}
       label={providerNameLabel ?? shortLabel}
       labelEllipsizeMode={providerNameLabel ? "middle" : undefined}
       iconOnly={props.iconOnly}

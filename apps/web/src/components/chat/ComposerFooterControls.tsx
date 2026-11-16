@@ -1,4 +1,9 @@
-import type { ModelSelection, ProviderInstanceId, RuntimeMode } from "@t3tools/contracts";
+import type {
+  ModelSelection,
+  ProviderInstanceId,
+  RuntimeMode,
+  ScopedThreadRef,
+} from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { type ComponentProps, memo, useId, useRef, useState } from "react";
 
@@ -219,6 +224,8 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   hideCompactToggle: boolean;
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
+  promptCacheThreadRef: ScopedThreadRef | null;
+  promptCacheSweepKey: number;
 }) {
   return (
     <>
@@ -249,6 +256,8 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         hideCompactToggle={props.hideCompactToggle}
         keepFullHistory={props.keepFullHistory}
         onToggleKeepFullHistory={props.onToggleKeepFullHistory}
+        promptCacheThreadRef={props.promptCacheThreadRef}
+        promptCacheSweepKey={props.promptCacheSweepKey}
       >
         {props.children}
       </ComposerPrimaryActions>

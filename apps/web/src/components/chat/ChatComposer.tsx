@@ -56,7 +56,11 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import { parseSideChatCommand, serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { type FolderDropTarget, folderDropTarget, resolveDroppedFolderPath } from "./folderDrop";
 import { splitTransferredFiles } from "./workspaceFileDrop";
-import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
+import {
+  createModelSelection,
+  modelSelectionsEqual,
+  normalizeModelSlug,
+} from "@t3tools/shared/model";
 import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import {
   memo,
@@ -214,6 +218,7 @@ import {
 } from "./ComposerAttachmentStrip";
 import { CollapsedComposerStopAction, ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterControls";
+import { ComposerPromptCacheBadge } from "./ComposerPromptCacheStatus";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { buildPullRequestReferenceContext } from "../pullRequest/pullRequestDetail.logic";
@@ -959,6 +964,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedModelOptionsForDispatch,
   );
   const selectedModelForPicker = selectedModel;
+  // A changed model or effort misses the cache, so the indicator only shows for the thread's own.
+  const promptCacheThreadRef =
+    activeThreadId !== null &&
+    activeThreadModelSelection != null &&
+    modelSelectionsEqual(activeThreadModelSelection, selectedModelSelection)
+      ? scopeThreadRef(environmentId, activeThreadId)
+      : null;
   const modelOptionsByInstance = new Map<ProviderInstanceId, ReadonlyArray<AppModelOption>>();
   for (const entry of providerInstanceEntries) {
     modelOptionsByInstance.set(
@@ -2119,6 +2131,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const submitComposerRef = useRef<
     (dispatchMode?: ComposerDispatchMode, submissionIntent?: ComposerSubmissionIntent) => void
   >(() => {});
+  const [promptCacheSweepKey, setPromptCacheSweepKey] = useState(0);
   const submitComposer = (
     event?: { preventDefault: () => void },
     dispatchMode?: ComposerDispatchMode,
@@ -2183,6 +2196,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     });
     setComposerSubmissionError(submission.validationMessage);
     if (!submission.didDispatch) return false;
+    setPromptCacheSweepKey((key) => key + 1);
     onTypingGuardSend();
     if (shouldBlurMobileComposerOnSubmit()) {
       blurMobileComposerAfterSend();
@@ -2483,6 +2497,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       modelPickerOpen={isComposerModelPickerOpen}
       onModelPickerOpenChange={setIsComposerModelPickerOpen}
       modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
+      modelPickerIconBadge={<ComposerPromptCacheBadge threadRef={promptCacheThreadRef} />}
       getModelDisabledReason={getModelDisabledReason}
     />
   );
@@ -3778,6 +3793,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     hideCompactToggle={dictationTakesFooter}
                     keepFullHistory={props.keepFullHistory}
                     onToggleKeepFullHistory={props.onToggleKeepFullHistory}
+                    promptCacheThreadRef={promptCacheThreadRef}
+                    promptCacheSweepKey={promptCacheSweepKey}
                   >
                     {speechInput.available ? (
                       <>

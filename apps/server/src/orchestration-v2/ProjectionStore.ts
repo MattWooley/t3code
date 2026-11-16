@@ -1,5 +1,10 @@
 import type { ProjectThreadAwarenessV2Input } from "@t3tools/shared/agentAwareness";
-import { applyOrchestrationV2ThreadVisit, pendingGuestMessageCount } from "@t3tools/contracts";
+import {
+  applyOrchestrationV2ThreadVisit,
+  ModelSelection,
+  pendingGuestMessageCount,
+} from "@t3tools/contracts";
+import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { applyThreadPullRequestLinkUpdate } from "../sourceControl/threadPullRequests.ts";
 import { projectTurnItemForWire } from "./WireProjection.ts";
 import * as Stream from "effect/Stream";
@@ -1147,6 +1152,7 @@ type ShellThreadRow = {
   readonly latest_user_message_at: string | null;
   readonly latest_user_authored_message_at: string | null;
   readonly has_actionable_proposed_plan: number;
+  readonly prompt_cache_json: string | null;
 };
 
 type ShellRunRow = {
@@ -1304,6 +1310,14 @@ const decodePullRequestThread = Schema.decodeUnknownEffect(
 
 const decodeThreadPayload = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationV2AppThreadJsonSchema),
+);
+const decodePromptCacheRow = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      expiresAt: Schema.NullOr(Schema.String),
+      cachedWith: Schema.NullOr(ModelSelection),
+    }),
+  ),
 );
 const decodeRunPayload = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationV2RunJsonSchema),
@@ -1857,6 +1871,10 @@ export function threadShellFromProjection(
       projection.providerThreads,
       projection.thread.activeProviderThreadId,
     ),
+    // Counts silent idle compactions too, so streamed usage never changes the shell.
+    promptCacheExpiresAt: projection.runs.some(isInterruptibleRunForShell)
+      ? null
+      : latestPromptCacheExpiresAt(projection),
     itemCount: activeLocalTurnItems(projection).length,
     visibleItemCount: projection.visibleTurnItems.length,
     createdAt: projection.thread.createdAt,
@@ -1907,6 +1925,41 @@ function activeProviderGoalForShell(
   activeProviderThreadId: OrchestrationV2ThreadProjection["thread"]["activeProviderThreadId"],
 ): OrchestrationV2ThreadShell["goal"] {
   return providerThreads.find((thread) => thread.id === activeProviderThreadId)?.goal ?? null;
+}
+
+/** Mirrors the shell row query: the latest provider turn that reported usage decides. */
+function latestPromptCacheExpiresAt(
+  projection: Pick<
+    OrchestrationV2ThreadProjection,
+    "thread" | "providerTurns" | "attempts" | "runs"
+  >,
+): string | null {
+  let latest: OrchestrationV2ThreadProjection["providerTurns"][number] | null = null;
+  for (const turn of projection.providerTurns) {
+    if (
+      turn.providerThreadId !== projection.thread.activeProviderThreadId ||
+      turn.tokenUsage === undefined
+    )
+      continue;
+    if (latest === null || turn.ordinal > latest.ordinal) latest = turn;
+  }
+  const runId = projection.attempts.find((attempt) => attempt.id === latest?.runAttemptId)?.runId;
+  return promptCacheExpiresAtForSelection({
+    expiresAt: latest?.tokenUsage?.promptCacheExpiresAt ?? null,
+    cachedWith: projection.runs.find((run) => run.id === runId)?.modelSelection ?? null,
+    selected: projection.thread.modelSelection,
+  });
+}
+
+/** Changing the model or its options, such as effort, clears Claude's prompt cache. */
+function promptCacheExpiresAtForSelection(input: {
+  readonly expiresAt: string | null;
+  readonly cachedWith: ModelSelection | null;
+  readonly selected: ModelSelection;
+}): string | null {
+  return input.cachedWith !== null && !modelSelectionsEqual(input.cachedWith, input.selected)
+    ? null
+    : input.expiresAt;
 }
 
 function isSilentRunForShell(
@@ -1981,6 +2034,7 @@ type ShellThreadState = {
   readonly pendingBackgroundTasks: OrchestrationV2ThreadShell["pendingBackgroundTasks"];
   readonly providerInstanceHistory: OrchestrationV2ThreadShell["providerInstanceHistory"];
   readonly goal: OrchestrationV2ThreadShell["goal"];
+  readonly promptCacheExpiresAt: string | null;
   readonly itemCount: number;
   readonly runlessItemCount: number;
   readonly updatedAt: OrchestrationV2ThreadProjection["updatedAt"];
@@ -2154,6 +2208,7 @@ function shellFromState(input: {
     pendingBackgroundTasks: input.state.pendingBackgroundTasks,
     providerInstanceHistory: input.state.providerInstanceHistory,
     goal: input.state.goal,
+    promptCacheExpiresAt: input.state.promptCacheExpiresAt,
     itemCount: input.state.itemCount,
     visibleItemCount: input.visibleItemCount,
     createdAt: input.state.thread.createdAt,
@@ -8010,7 +8065,32 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 WHERE plan.thread_id = t.thread_id
                   AND plan.kind = 'proposed_plan'
                   AND plan.status = 'active'
-              ) AS has_actionable_proposed_plan
+              ) AS has_actionable_proposed_plan,
+              CASE WHEN EXISTS (
+                SELECT 1
+                FROM orchestration_v2_projection_runs live
+                  INDEXED BY orchestration_v2_projection_runs_thread_status_idx
+                WHERE live.thread_id = t.thread_id
+                  AND live.status IN ('preparing', 'starting', 'running')
+              ) THEN NULL ELSE (
+                SELECT json_object(
+                  'expiresAt',
+                  json_extract(provider_turn.payload_json, '$.tokenUsage.promptCacheExpiresAt'),
+                  'cachedWith',
+                  json((
+                    SELECT json_extract(cache_run.payload_json, '$.modelSelection')
+                    FROM orchestration_v2_projection_run_attempts cache_attempt
+                    JOIN orchestration_v2_projection_runs cache_run
+                      ON cache_run.run_id = cache_attempt.run_id
+                    WHERE cache_attempt.attempt_id = provider_turn.run_attempt_id
+                  ))
+                )
+                FROM orchestration_v2_projection_provider_turns provider_turn
+                WHERE provider_turn.provider_thread_id = t.active_provider_thread_id
+                  AND json_type(provider_turn.payload_json, '$.tokenUsage') IS NOT NULL
+                ORDER BY provider_turn.ordinal DESC
+                LIMIT 1
+              ) END AS prompt_cache_json
             FROM orchestration_v2_projection_threads t
             LEFT JOIN orchestration_v2_projection_runs active ON active.run_id = (
               SELECT r.run_id
@@ -8670,6 +8750,13 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             providerThreadsByThreadId.get(thread.id) ?? [],
             thread.activeProviderThreadId,
           ),
+          promptCacheExpiresAt:
+            row.prompt_cache_json === null
+              ? null
+              : promptCacheExpiresAtForSelection({
+                  ...(yield* decodePromptCacheRow(row.prompt_cache_json)),
+                  selected: thread.modelSelection,
+                }),
           itemCount: shellItemCountsByThreadId.get(thread.id)?.itemCount ?? 0,
           runlessItemCount: shellItemCountsByThreadId.get(thread.id)?.runlessItemCount ?? 0,
           updatedAt: thread.updatedAt,

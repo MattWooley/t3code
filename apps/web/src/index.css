@@ -230,6 +230,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-stash-pulse-row: stash-pulse-row 1400ms;
   --animate-stash-pulse-row-alt: stash-pulse-row-alt 1400ms;
   --animate-stash-pulse-count: stash-pulse-count 1400ms step-start;
+  /* One-shot prompt cache ring effects. Both end invisible, so nothing has to remove them. */
+  --animate-prompt-cache-sweep: prompt-cache-sweep 800ms both;
+  --animate-prompt-cache-pulse: prompt-cache-pulse 700ms ease-out both;
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -327,6 +330,32 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     from,
     85.7% {
       color: var(--color-primary);
+    }
+  }
+  @keyframes prompt-cache-sweep {
+    /* Draws the ring from the top back to full, then fades to show the real state again. */
+    0% {
+      stroke-dashoffset: 100;
+      opacity: 1;
+      animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+    }
+    65% {
+      stroke-dashoffset: 0;
+      opacity: 1;
+    }
+    100% {
+      stroke-dashoffset: 0;
+      opacity: 0;
+    }
+  }
+  @keyframes prompt-cache-pulse {
+    from {
+      opacity: 0.6;
+      scale: 1;
+    }
+    to {
+      opacity: 0;
+      scale: 1.35;
     }
   }
   @keyframes status-pulse {

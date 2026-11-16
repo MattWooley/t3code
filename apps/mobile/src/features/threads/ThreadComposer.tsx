@@ -110,6 +110,11 @@ import {
 import { compactEditorInsets } from "./compactEditorInsets";
 import { ComposerCommandPopover } from "./ComposerCommandPopover";
 import { ComposerPopoverAnchor } from "./ComposerPopoverAnchor";
+import {
+  ComposerPromptCacheBadge,
+  ComposerPromptCacheRing,
+  usePromptCacheIndicator,
+} from "./ComposerPromptCache";
 import { ComposerQueuedEditAttachments } from "./ComposerQueuedEdit";
 import { useComposerCommandMenu } from "./use-composer-command-menu";
 import type { ComposerEnvironmentCandidate } from "@t3tools/client-runtime/composerThreadItems";
@@ -358,20 +363,42 @@ const FOLLOW_UP_ACTION_SUBTITLE = {
 
 function SendActionButton(props: {
   readonly size?: "regular" | "large";
+  readonly thread: EnvironmentThreadShell;
   readonly accessibilityLabel: string;
   readonly presentation: ComposerSendPresentation;
   readonly disabled: boolean;
   readonly onSend: (followUp?: ActiveTurnComposerAction) => void;
 }) {
+  const promptCache = usePromptCacheIndicator(props.thread);
+  // Bumped per press; each new key sweeps the prompt cache ring back to full once.
+  const [sweepKey, setSweepKey] = useState(0);
   const { presentation } = props;
+  const send = (followUp?: ActiveTurnComposerAction) => {
+    setSweepKey((key) => key + 1);
+    props.onSend(followUp);
+  };
   const button = (
     <ComposerActionButton
-      accessibilityLabel={props.accessibilityLabel}
+      accessibilityLabel={
+        promptCache === null
+          ? props.accessibilityLabel
+          : `${props.accessibilityLabel}. ${promptCache.description}`
+      }
+      ring={
+        promptCache === null ? undefined : (
+          <ComposerPromptCacheRing
+            // Another thread's ring starts over, so it never animates a change it did not go through.
+            key={props.thread.id}
+            indicator={promptCache}
+            sweepKey={sweepKey}
+          />
+        )
+      }
       size={props.size}
       icon={presentation.icon}
       variant="primary"
       disabled={props.disabled}
-      onPress={() => props.onSend()}
+      onPress={() => send()}
     />
   );
   if (!presentation.offersFollowUpChoice || presentation.action === null || props.disabled) {
@@ -390,9 +417,7 @@ function SendActionButton(props: {
         subtitle: FOLLOW_UP_ACTION_SUBTITLE[action],
         state: action === presentation.action ? ("on" as const) : ("off" as const),
       }))}
-      onPressAction={({ nativeEvent }) =>
-        props.onSend(nativeEvent.event as ActiveTurnComposerAction)
-      }
+      onPressAction={({ nativeEvent }) => send(nativeEvent.event as ActiveTurnComposerAction)}
     >
       {button}
     </Menu>
@@ -871,6 +896,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         prompt={draftMessage}
         surfaceColor={composerPanel}
         iconOnly={!compactEditor.isExpanded}
+        iconBadge={
+          <ComposerPromptCacheBadge thread={props.selectedThread} surfaceColor={composerPanel} />
+        }
         onPress={openSettings}
       />
     </View>
@@ -1218,6 +1246,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                 ) : (
                   <SendActionButton
                     size={usesLargeControls ? "large" : "regular"}
+                    thread={props.selectedThread}
                     accessibilityLabel={sendBlockedReason ?? sendLabel}
                     presentation={sendPresentation}
                     disabled={!canSend}
@@ -1286,6 +1315,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   ) : voicePresentation.showsSend ? (
                     <SendActionButton
                       size={usesLargeControls ? "large" : "regular"}
+                      thread={props.selectedThread}
                       accessibilityLabel={sendBlockedReason ?? sendLabel}
                       presentation={sendPresentation}
                       disabled={!canSend}

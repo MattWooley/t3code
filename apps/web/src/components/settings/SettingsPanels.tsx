@@ -496,6 +496,13 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarWorkingShelfEnabled !== DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled
       ? ["Working section"]
       : []),
+    ...(settings.promptCacheTimersEnabled !== DEFAULT_UNIFIED_SETTINGS.promptCacheTimersEnabled
+      ? ["Prompt cache timers"]
+      : []),
+    ...(settings.promptCacheRingPulseEnabled !==
+    DEFAULT_UNIFIED_SETTINGS.promptCacheRingPulseEnabled
+      ? ["Pulse the prompt cache ring"]
+      : []),
     ...(settings.sidebarAutoSettleAfterDays !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
       ? ["Auto-settle inactive threads"]
       : []),
@@ -677,6 +684,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
+      promptCacheTimersEnabled: DEFAULT_UNIFIED_SETTINGS.promptCacheTimersEnabled,
+      promptCacheRingPulseEnabled: DEFAULT_UNIFIED_SETTINGS.promptCacheRingPulseEnabled,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
@@ -927,6 +936,70 @@ export function GeneralSettingsPanel() {
                 updateSettings({ sidebarWorkingShelfEnabled: Boolean(checked) })
               }
               aria-label={gt("Working section")}
+            />
+          }
+        />
+        <SettingsRow
+          {...setting("prompt-cache-timers")}
+          description={
+            <T>
+              Show how long each Claude thread's prompt cache stays warm. Replying before it goes
+              cold reuses the cached context instead of writing all of it again.
+            </T>
+          }
+          resetAction={
+            settings.promptCacheTimersEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.promptCacheTimersEnabled ? (
+              <SettingResetButton
+                label="prompt cache timers"
+                onClick={() =>
+                  updateSettings({
+                    promptCacheTimersEnabled: DEFAULT_UNIFIED_SETTINGS.promptCacheTimersEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.promptCacheTimersEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ promptCacheTimersEnabled: Boolean(checked) })
+              }
+              aria-label={gt("Prompt cache timers")}
+            />
+          }
+        />
+        <SettingsRow
+          {...setting("prompt-cache-ring-pulse")}
+          description={
+            <T>
+              Pulse the ring around Send once when the open thread's prompt cache enters its last 5
+              minutes, and once more when it goes cold. Needs prompt cache timers.
+            </T>
+          }
+          resetAction={
+            settings.promptCacheRingPulseEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.promptCacheRingPulseEnabled ? (
+              <SettingResetButton
+                label="prompt cache ring pulse"
+                onClick={() =>
+                  updateSettings({
+                    promptCacheRingPulseEnabled:
+                      DEFAULT_UNIFIED_SETTINGS.promptCacheRingPulseEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.promptCacheTimersEnabled && settings.promptCacheRingPulseEnabled}
+              disabled={!settings.promptCacheTimersEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ promptCacheRingPulseEnabled: Boolean(checked) })
+              }
+              aria-label={gt("Pulse the prompt cache ring")}
             />
           }
         />

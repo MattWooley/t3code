@@ -330,3 +330,77 @@ export function compactBeforeSendTokens(input: {
     ? contextWindow.usedTokens
     : null;
 }
+
+export const PROMPT_CACHE_WARNING_MS = 5 * 60_000;
+
+export type PromptCacheState =
+  | { readonly status: "warm"; readonly expiresAt: string; readonly remainingMs: number }
+  | { readonly status: "cold"; readonly expiresAt: string };
+
+/**
+ * Only Claude reports when its prompt cache expires, and only on requests that wrote to it, so a
+ * compaction or a cache-read-only reply leaves the state unknown.
+ */
+export function derivePromptCacheState(
+  usage: { readonly promptCacheExpiresAt?: string | null | undefined } | null,
+  nowMs: number,
+): PromptCacheState | null {
+  const expiresAt = usage?.promptCacheExpiresAt;
+  if (expiresAt == null) return null;
+  const remainingMs = Date.parse(expiresAt) - nowMs;
+  if (Number.isNaN(remainingMs)) return null;
+  return remainingMs > 0
+    ? { status: "warm", expiresAt, remainingMs }
+    : { status: "cold", expiresAt };
+}
+
+/**
+ * For clients that tick once a minute: judges the cache at the end of the current minute, so it
+ * can read cold up to a minute early but never warm after it has expired.
+ */
+export function derivePromptCacheStateForMinute(
+  usage: Parameters<typeof derivePromptCacheState>[0],
+  minuteStartMs: number,
+): PromptCacheState | null {
+  return derivePromptCacheState(usage, minuteStartMs + 60_000);
+}
+
+/** Whole minutes left, rounded up so a warm cache never reads "0m". */
+export function formatPromptCacheRemaining(remainingMs: number): string {
+  const minutes = Math.ceil(remainingMs / 60_000);
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}h` : `${minutes}m`;
+}
+
+export interface PromptCacheIndicator {
+  readonly tone: "warm" | "expiring" | "cold";
+  /** Share of a ring to draw: full while warm, then one fifth less each minute. */
+  readonly fraction: number;
+  readonly description: string;
+}
+
+export function presentPromptCacheIndicator(cache: PromptCacheState): PromptCacheIndicator {
+  if (cache.status === "cold") {
+    return {
+      tone: "cold",
+      fraction: 1,
+      description: "Prompt cache cold. The next message writes the whole context again.",
+    };
+  }
+  const expiring = cache.remainingMs <= PROMPT_CACHE_WARNING_MS;
+  return {
+    tone: expiring ? "expiring" : "warm",
+    fraction: expiring ? Math.ceil(cache.remainingMs / 60_000) / 5 : 1,
+    description: `Prompt cache warm for ${formatPromptCacheRemaining(cache.remainingMs)}`,
+  };
+}
+
+/**
+ * Whether a ring that showed `previous` pulses once on turning to `next`: only when the cache
+ * starts running out or goes cold, never on first sight or on warming back up.
+ */
+export function promptCacheRingPulses(
+  previous: PromptCacheIndicator["tone"] | null,
+  next: PromptCacheIndicator["tone"],
+): boolean {
+  return previous !== null && previous !== next && next !== "warm";
+}

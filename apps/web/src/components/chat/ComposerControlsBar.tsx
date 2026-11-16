@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ChatComposerProps } from "./ChatComposer";
 import type { PromptUltrathink } from "./TraitsPicker";
 import type { ProviderInstanceEntry } from "../../providerInstances";
@@ -58,6 +59,7 @@ export function ComposerControlsBar(props: {
   permissionsShownInStrip: boolean;
   compatibleRuntimeMode: RuntimeMode;
   defaultRuntimeMode: RuntimeMode | undefined;
+  modelPickerIconBadge?: ReactNode;
   compatibleRuntimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   composerControlsCollapsed: boolean;
@@ -129,6 +131,7 @@ export function ComposerControlsBar(props: {
     modelPickerOpen,
     onModelPickerOpenChange,
     modelPickerIconClassName,
+    modelPickerIconBadge,
     getModelDisabledReason,
   } = props;
   const accessMatchesDefault = compatibleRuntimeMode === defaultRuntimeMode;
@@ -237,6 +240,7 @@ export function ComposerControlsBar(props: {
           ? "color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent)"
           : "var(--contrast-input)"
       }
+      iconBadge={modelPickerIconBadge}
       {...(modelPickerIconClassName
         ? { activeProviderIconClassName: modelPickerIconClassName }
         : {})}

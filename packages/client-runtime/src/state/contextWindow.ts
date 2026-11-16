@@ -370,3 +370,26 @@ export function formatPromptCacheRemaining(remainingMs: number): string {
   const minutes = Math.ceil(remainingMs / 60_000);
   return minutes >= 60 ? `${Math.floor(minutes / 60)}h` : `${minutes}m`;
 }
+
+export interface PromptCacheIndicator {
+  readonly tone: "warm" | "expiring" | "cold";
+  /** Share of a ring to draw: full while warm, then one fifth less each minute. */
+  readonly fraction: number;
+  readonly description: string;
+}
+
+export function presentPromptCacheIndicator(cache: PromptCacheState): PromptCacheIndicator {
+  if (cache.status === "cold") {
+    return {
+      tone: "cold",
+      fraction: 1,
+      description: "Prompt cache cold. The next message writes the whole context again.",
+    };
+  }
+  const expiring = cache.remainingMs <= PROMPT_CACHE_WARNING_MS;
+  return {
+    tone: expiring ? "expiring" : "warm",
+    fraction: expiring ? Math.ceil(cache.remainingMs / 60_000) / 5 : 1,
+    description: `Prompt cache warm for ${formatPromptCacheRemaining(cache.remainingMs)}`,
+  };
+}

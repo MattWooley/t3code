@@ -279,6 +279,8 @@ export function ComposerActionButton(props: {
   readonly icon: ComponentProps<typeof SymbolView>["name"];
   readonly onPress: () => void;
   readonly variant?: "primary" | "danger";
+  /** Drawn around the circle, such as the prompt cache ring. */
+  readonly ring?: ReactNode;
   // Menu injects onLongPress on Android and onTouchStart/onPress on iOS.
   readonly onLongPress?: PressableProps["onLongPress"];
   readonly onTouchStart?: PressableProps["onTouchStart"];
@@ -329,6 +331,7 @@ export function ComposerActionButton(props: {
             type="monochrome"
           />
         </View>
+        {props.ring}
       </View>
     </Pressable>
   );

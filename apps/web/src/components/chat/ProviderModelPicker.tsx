@@ -100,6 +100,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   keybindings?: ResolvedKeybindingsConfig;
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   activeProviderIconClassName?: string;
+  /** Drawn over the corner of the trigger's provider icon. */
+  iconBadge?: ReactNode;
   instanceIndicatorBackground?: string;
   size?: ComposerControlSize;
   compact?: boolean;
@@ -404,7 +406,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </span>
           ) : activeEntry && props.triggerLabel === undefined ? (
             // Narrow compacted composers hide the provider icon before truncating the name.
-            <span data-chat-provider-model-picker-icon className="contents">
+            <span data-chat-provider-model-picker-icon className="relative inline-flex">
               <ProviderInstanceIcon
                 driverKind={activeEntry.driverKind}
                 displayName={activeEntry.displayName}
@@ -420,6 +422,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                   size === "xs" && "shadow-none",
                 )}
               />
+              {props.iconBadge}
             </span>
           ) : null}
           {props.isComposerOwned ? (

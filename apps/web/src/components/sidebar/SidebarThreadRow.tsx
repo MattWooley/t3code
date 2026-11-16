@@ -28,6 +28,11 @@ import {
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { toServerClock } from "@t3tools/client-runtime/clock";
 import {
+  derivePromptCacheStateForMinute,
+  formatPromptCacheRemaining,
+  PROMPT_CACHE_WARNING_MS,
+} from "@t3tools/client-runtime/state/context-window";
+import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
   type EnvironmentMachineKind,
@@ -52,6 +57,7 @@ import {
   ShieldQuestionIcon,
   SquarePenIcon,
   TerminalIcon,
+  TimerIcon,
   Undo2Icon,
   UserRoundIcon,
   XIcon,
@@ -72,6 +78,7 @@ import { useUiStateStore } from "../../uiStateStore";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useNowSecond } from "../../hooks/useNowSecond";
+import { useClientSettings } from "../../hooks/useSettings";
 import { vcsEnvironment, vcsBranchRevalidation } from "../../state/vcs";
 import { useEnvironmentQuery } from "../../state/query";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
@@ -151,6 +158,37 @@ function RelativeTimeLabel(props: { timestamp: string | null }) {
     : compactSidebarTimeLabel(
         formatRelativeTimeLabel(props.timestamp, Date.parse(`${nowMinute}:00.000Z`)),
       );
+}
+
+function PromptCacheBadge(props: { thread: SidebarThreadSummary }) {
+  const enabled = useClientSettings((settings) => settings.promptCacheTimersEnabled);
+  return enabled && props.thread.promptCacheExpiresAt != null ? (
+    <PromptCacheBadgeLabel {...props} />
+  ) : null;
+}
+
+// Ticks on the shared minute clock, so rows add no timers of their own.
+function PromptCacheBadgeLabel(props: { thread: SidebarThreadSummary }) {
+  const nowMinute = useNowMinute();
+  // The server stamps the expiry, so compare it on the server's clock.
+  const now = toServerClock(props.thread.environmentId, Date.parse(`${nowMinute}:00.000Z`));
+  const cache = derivePromptCacheStateForMinute(props.thread, now);
+  if (cache?.status !== "warm") return null;
+  const remaining = formatPromptCacheRemaining(cache.remainingMs);
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 tabular-nums",
+        cache.remainingMs <= PROMPT_CACHE_WARNING_MS
+          ? "text-warning-foreground"
+          : "text-muted-foreground/70",
+      )}
+    >
+      <TimerIcon aria-hidden className="size-3" />
+      <span aria-hidden>{remaining}</span>
+      <span className="sr-only">Prompt cache warm for {remaining}</span>
+    </span>
+  );
 }
 
 function JumpHintBadge(props: { label: string }) {
@@ -1335,7 +1373,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         {topStatus.label}
                       </span>
                     ) : (
-                      <span className="text-xs">
+                      <span className="inline-flex items-center gap-1.5 text-xs">
+                        <PromptCacheBadge thread={thread} />
                         <RelativeTimeLabel
                           timestamp={
                             variantAction === "unsettle"
@@ -1542,7 +1581,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         </span>
                       )
                     ) : (
-                      <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
+                      <span className="inline-flex items-center gap-1.5">
+                        <PromptCacheBadge thread={thread} />
+                        <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
+                      </span>
                     )}
                   </span>
                   {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (

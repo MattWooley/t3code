@@ -2244,6 +2244,12 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
   goal: Schema.optional(Schema.NullOr(OrchestrationV2ProviderGoal)),
+  /**
+   * When the active provider thread's prompt cache expires, from its latest token usage. Only
+   * Claude reports it. Null while a run is active, so streaming never changes the shell. Absent
+   * from older servers.
+   */
+  promptCacheExpiresAt: Schema.optional(Schema.NullOr(Schema.String)),
   itemCount: NonNegativeInt,
   visibleItemCount: NonNegativeInt,
   createdAt: Schema.DateTimeUtc,

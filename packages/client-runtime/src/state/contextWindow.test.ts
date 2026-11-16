@@ -14,7 +14,12 @@ import {
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { compactBeforeSendTokens } from "./contextWindow.ts";
+import {
+  compactBeforeSendTokens,
+  derivePromptCacheState,
+  derivePromptCacheStateForMinute,
+  formatPromptCacheRemaining,
+} from "./contextWindow.ts";
 import type { ThreadStructure } from "./models.ts";
 import { v2Projection } from "./orchestrationV2TestFixtures.ts";
 
@@ -259,6 +264,53 @@ describe("compactBeforeSendTokens", () => {
   ] as const)("$name", ({ name: _name, expected, ...overrides }) => {
     expect(compactBeforeSendTokens(sendInput(overrides as Parameters<typeof sendInput>[0]))).toBe(
       expected ? 293_611 : null,
+    );
+  });
+});
+
+describe("derivePromptCacheState", () => {
+  const expiresAt = "2026-11-15T12:00:00.000Z";
+  const expiresMs = Date.parse(expiresAt);
+
+  it.each([
+    { usage: null, nowMs: expiresMs, expected: null },
+    { usage: { promptCacheExpiresAt: null }, nowMs: expiresMs, expected: null },
+    { usage: { promptCacheExpiresAt: "not a date" }, nowMs: expiresMs, expected: null },
+    {
+      usage: { promptCacheExpiresAt: expiresAt },
+      nowMs: expiresMs - 60_000,
+      expected: { status: "warm", expiresAt, remainingMs: 60_000 },
+    },
+    {
+      usage: { promptCacheExpiresAt: expiresAt },
+      nowMs: expiresMs - 1,
+      expected: { status: "warm", expiresAt, remainingMs: 1 },
+    },
+    {
+      usage: { promptCacheExpiresAt: expiresAt },
+      nowMs: expiresMs,
+      expected: { status: "cold", expiresAt },
+    },
+  ])("reads %j", ({ usage, nowMs, expected }) => {
+    expect(derivePromptCacheState(usage, nowMs)).toEqual(expected);
+  });
+});
+
+describe("derivePromptCacheStateForMinute", () => {
+  const expiresAt = "2026-11-15T12:00:30.000Z";
+
+  it.each([
+    { minute: "2026-11-15T11:58:00.000Z", label: "2m" },
+    { minute: "2026-11-15T11:59:00.000Z", label: "1m" },
+    // The cache expires 30s into this minute, so the whole minute already reads cold.
+    { minute: "2026-11-15T12:00:00.000Z", label: null },
+  ])("reads the minute starting  as ", ({ minute, label }) => {
+    const cache = derivePromptCacheStateForMinute(
+      { promptCacheExpiresAt: expiresAt },
+      Date.parse(minute),
+    );
+    expect(cache?.status === "warm" ? formatPromptCacheRemaining(cache.remainingMs) : null).toBe(
+      label,
     );
   });
 });

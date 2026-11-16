@@ -31,10 +31,16 @@ import {
   type EnvironmentMachineKind,
 } from "@t3tools/contracts";
 import { toServerClock } from "@t3tools/client-runtime/clock";
+import {
+  derivePromptCacheStateForMinute,
+  formatPromptCacheRemaining,
+  PROMPT_CACHE_WARNING_MS,
+} from "@t3tools/client-runtime/state/context-window";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import type { MenuAction } from "@react-native-menu/menu";
+import { useAtomValue } from "@effect/atom-react";
 import { memo, useCallback, useMemo, useState, type ComponentProps } from "react";
 import { Platform, Pressable, Text as RNText, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -50,7 +56,8 @@ import {
   ProviderInstanceIcon,
   providerInstanceNameLabel,
 } from "../../components/ProviderIcon";
-import { useNowAfter } from "../../lib/clock";
+import { useNowAfter, useNowMinuteMs } from "../../lib/clock";
+import { promptCacheTimersEnabledAtom } from "../../state/preferences";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { copyThreadReference } from "../../lib/copyThreadReference";
@@ -174,6 +181,60 @@ function ThreadListV2Duration(props: {
         {formatWorkingDurationLabel(toServerClock(props.environmentId, nowMs) - startedAtMs)}
       </RNText>
     </>
+  );
+}
+
+function ThreadListPromptCacheBadge(props: {
+  readonly thread: EnvironmentThreadShell;
+  readonly selected: boolean;
+}) {
+  return useAtomValue(promptCacheTimersEnabledAtom) && props.thread.promptCacheExpiresAt != null ? (
+    <ThreadListPromptCacheLabel {...props} />
+  ) : null;
+}
+
+// Ticks on the shared minute clock, so rows add no timers of their own.
+function ThreadListPromptCacheLabel(props: {
+  readonly thread: EnvironmentThreadShell;
+  readonly selected: boolean;
+}) {
+  // The server stamps the expiry, so compare it on the server's clock.
+  const nowMs = toServerClock(props.thread.environmentId, useNowMinuteMs());
+  const cache = derivePromptCacheStateForMinute(props.thread, nowMs);
+  if (cache?.status !== "warm") return null;
+  const remaining = formatPromptCacheRemaining(cache.remainingMs);
+  const warning = cache.remainingMs <= PROMPT_CACHE_WARNING_MS;
+  return (
+    <View
+      accessible
+      accessibilityLabel={`Prompt cache warm for ${remaining}`}
+      className="flex-row items-center gap-0.5"
+    >
+      <SymbolView
+        name="timer"
+        size={11}
+        tintColorClassName={
+          props.selected
+            ? selectedThreadRowColors.iconTintClassName
+            : warning
+              ? "accent-warning-foreground"
+              : "accent-icon-muted"
+        }
+        type="monochrome"
+      />
+      <Text
+        className={cn(
+          "text-xs tabular-nums",
+          props.selected
+            ? selectedThreadRowColors.mutedForegroundClassName
+            : warning
+              ? "text-warning-foreground"
+              : "text-foreground-muted",
+        )}
+      >
+        {remaining}
+      </Text>
+    </View>
   );
 }
 
@@ -1296,16 +1357,19 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               </Text>
             </View>
           ) : (
-            <Text
-              className={cn(
-                "text-xs tabular-nums",
-                selected
-                  ? selectedThreadRowColors.foregroundClassName
-                  : rowAppearance.tertiaryForegroundClassName,
-              )}
-            >
-              {timeLabel}
-            </Text>
+            <View className="flex-row items-center gap-1.5">
+              <ThreadListPromptCacheBadge thread={thread} selected={selected} />
+              <Text
+                className={cn(
+                  "text-xs tabular-nums",
+                  selected
+                    ? selectedThreadRowColors.foregroundClassName
+                    : rowAppearance.tertiaryForegroundClassName,
+                )}
+              >
+                {timeLabel}
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -1555,6 +1619,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             ) : null}
           </View>
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
+          <ThreadListPromptCacheBadge thread={thread} selected={selected} />
           <Text
             className={cn(
               "text-sm tabular-nums",

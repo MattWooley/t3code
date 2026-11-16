@@ -6718,6 +6718,253 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
     }),
   );
 
+  it.effect("shows the latest prompt cache expiry of the active provider thread while idle", () =>
+    Effect.gen(function* () {
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:prompt-cache");
+      const nodeId = NodeId.make("node:prompt-cache");
+      const at = (minutes: number) => DateTime.formatIso(DateTime.add(now, { minutes }));
+      const selected = ProviderThreadId.make("provider-thread:prompt-cache:selected");
+      const other = ProviderThreadId.make("provider-thread:prompt-cache:other");
+      yield* projectionStore.apply({
+        id: EventId.make("event:prompt-cache:thread"),
+        type: "thread.created",
+        threadId,
+        occurredAt: now,
+        payload: {
+          createdBy: "user",
+          creationSource: "web",
+          id: threadId,
+          projectId: ProjectId.make("project:prompt-cache"),
+          title: "Prompt cache",
+          providerInstanceId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          activeProviderThreadId: null,
+          lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+          forkedFrom: null,
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
+          lastVisitedAt: null,
+          deletedAt: null,
+        },
+      });
+      const activate = (id: ProviderThreadId, seconds: number) =>
+        projectionStore.apply({
+          id: EventId.make(`event:${id}:${seconds}`),
+          type: "provider-thread.updated",
+          threadId,
+          driver,
+          occurredAt: DateTime.add(now, { seconds }),
+          payload: {
+            id,
+            driver,
+            providerInstanceId,
+            providerSessionId: null,
+            appThreadId: threadId,
+            ownerNodeId: null,
+            nativeThreadRef: null,
+            nativeConversationHeadRef: null,
+            status: "idle",
+            firstRunOrdinal: null,
+            lastRunOrdinal: null,
+            handoffIds: [],
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: DateTime.add(now, { seconds }),
+          },
+        });
+      const reportTurn = (
+        id: string,
+        providerThreadId: ProviderThreadId,
+        ordinal: number,
+        expiresAt: string | null | undefined,
+        runAttemptId: RunAttemptId | null = null,
+      ) =>
+        projectionStore.apply({
+          id: EventId.make(`event:prompt-cache:turn:${id}`),
+          type: "provider-turn.updated",
+          threadId,
+          nodeId,
+          driver,
+          occurredAt: now,
+          payload: {
+            id: ProviderTurnId.make(`turn:prompt-cache:${id}`),
+            providerThreadId,
+            nodeId,
+            runAttemptId,
+            nativeTurnRef: null,
+            ordinal,
+            status: "completed",
+            startedAt: now,
+            completedAt: now,
+            // undefined: no usage reported; null: usage from a request that wrote no cache.
+            ...(expiresAt === undefined
+              ? {}
+              : {
+                  tokenUsage: {
+                    usedTokens: 1_000,
+                    updatedAt: at(ordinal),
+                    ...(expiresAt === null ? {} : { promptCacheExpiresAt: expiresAt }),
+                  },
+                }),
+          },
+        });
+      const startRun = (id: string, text: string, creation: "user" | "server") =>
+        Effect.gen(function* () {
+          const messageId = MessageId.make(`message:prompt-cache:${id}`);
+          const runId = RunId.make(`run:prompt-cache:${id}`);
+          yield* projectionStore.apply({
+            id: EventId.make(`event:prompt-cache:${id}:message`),
+            type: "message.updated",
+            threadId,
+            occurredAt: now,
+            payload: {
+              id: messageId,
+              threadId,
+              runId: null,
+              nodeId: null,
+              role: "user",
+              text,
+              attachments: [],
+              streaming: false,
+              createdBy: creation === "server" ? "agent" : "user",
+              creationSource: creation === "server" ? "server" : "web",
+              createdAt: now,
+              updatedAt: now,
+            },
+          });
+          yield* projectionStore.apply({
+            id: EventId.make(`event:prompt-cache:${id}:run`),
+            type: "run.created",
+            threadId,
+            runId,
+            nodeId,
+            driver,
+            providerInstanceId,
+            occurredAt: now,
+            payload: {
+              id: runId,
+              threadId,
+              ordinal: id === "user" ? 1 : 2,
+              providerInstanceId,
+              modelSelection,
+              providerThreadId: selected,
+              userMessageId: messageId,
+              rootNodeId: nodeId,
+              activeAttemptId: null,
+              status: "running",
+              requestedAt: now,
+              startedAt: now,
+              completedAt: null,
+              checkpointId: null,
+              contextHandoffId: null,
+            },
+          });
+          return runId;
+        });
+      const shellExpiries = Effect.gen(function* () {
+        const shells = [
+          yield* projectionStore.getThreadShell(threadId),
+          ProjectionStore.threadShellFromProjection(
+            yield* projectionStore.getThreadProjection(threadId),
+          ),
+        ];
+        return shells.map((shell) => shell?.promptCacheExpiresAt);
+      });
+
+      yield* activate(other, 0);
+      yield* activate(selected, 1);
+      yield* reportTurn("other", other, 9, at(69));
+      yield* reportTurn("first", selected, 1, at(61));
+      yield* reportTurn("second", selected, 2, at(62));
+      yield* reportTurn("no-usage", selected, 3, undefined);
+      assert.deepEqual(yield* shellExpiries, [at(62), at(62)]);
+
+      // A cache-read-only reply reports no expiry, so the older one no longer applies.
+      yield* reportTurn("read-only", selected, 4, null);
+      assert.deepEqual(yield* shellExpiries, [null, null]);
+
+      yield* activate(other, 2);
+      assert.deepEqual(yield* shellExpiries, [at(69), at(69)]);
+      yield* activate(selected, 3);
+      yield* reportTurn("fifth", selected, 5, at(65));
+
+      // Streamed usage must not change the shell, including during a silent idle compaction.
+      for (const [id, text, creation] of [
+        ["user", "Next step", "user"],
+        ["idle-compaction", "/compact", "server"],
+      ] as const) {
+        const runId = yield* startRun(id, text, creation);
+        assert.deepEqual(yield* shellExpiries, [null, null], id);
+        yield* projectionStore.apply({
+          id: EventId.make(`event:prompt-cache:${id}:done`),
+          type: "run.updated",
+          threadId,
+          runId,
+          nodeId,
+          driver,
+          occurredAt: now,
+          payload: {
+            ...(yield* projectionStore.getThreadProjection(threadId)).runs.find(
+              (run) => run.id === runId,
+            )!,
+            status: "completed",
+            completedAt: now,
+          },
+        });
+        assert.deepEqual(yield* shellExpiries, [at(65), at(65)], id);
+      }
+
+      // Changing the model or effort clears Claude's cache, and changing back matches it again.
+      const attemptId = RunAttemptId.make("attempt:prompt-cache:user");
+      yield* projectionStore.apply({
+        id: EventId.make("event:prompt-cache:attempt"),
+        type: "run-attempt.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: attemptId,
+          runId: RunId.make("run:prompt-cache:user"),
+          attemptOrdinal: 1,
+          rootNodeId: nodeId,
+          providerInstanceId,
+          providerThreadId: selected,
+          providerTurnId: null,
+          reason: "initial",
+          status: "completed",
+          startedAt: now,
+          completedAt: now,
+        },
+      });
+      yield* reportTurn("sixth", selected, 6, at(66), attemptId);
+      for (const [selection, expected] of [
+        [{ ...modelSelection, options: [{ id: "effort", value: "high" }] }, null],
+        [modelSelection, at(66)],
+      ] as const) {
+        const { thread } = yield* projectionStore.getThreadProjection(threadId);
+        yield* projectionStore.apply({
+          id: EventId.make(`event:prompt-cache:selection:${expected}`),
+          type: "thread.model-selection-updated",
+          threadId,
+          occurredAt: now,
+          payload: {
+            ...thread,
+            modelSelection: selection,
+          },
+        });
+        assert.deepEqual(yield* shellExpiries, [expected, expected]);
+      }
+    }),
+  );
+
   // regression: #17141 shell snapshot decoding blocked other database reads
   it.effect("reads the shell snapshot first and decodes it in a separate step", () =>
     Effect.gen(function* () {

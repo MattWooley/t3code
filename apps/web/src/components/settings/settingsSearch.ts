@@ -466,6 +466,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
   },
   {
+    id: "prompt-cache-timers",
+    title: msg("Prompt cache timers"),
+    to: "/settings/general",
+    searchTerms: ["claude cache warm cold expiry countdown ttl sidebar tokens"],
+  },
+  {
     id: "boring-sidebar",
     title: "Boring sidebar (group by project)",
     to: "/settings/labs",

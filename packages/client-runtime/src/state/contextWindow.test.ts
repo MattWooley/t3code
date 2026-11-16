@@ -19,6 +19,7 @@ import {
   derivePromptCacheState,
   derivePromptCacheStateForMinute,
   formatPromptCacheRemaining,
+  promptCacheRingPulses,
 } from "./contextWindow.ts";
 import type { ThreadStructure } from "./models.ts";
 import { v2Projection } from "./orchestrationV2TestFixtures.ts";
@@ -312,5 +313,19 @@ describe("derivePromptCacheStateForMinute", () => {
     expect(cache?.status === "warm" ? formatPromptCacheRemaining(cache.remainingMs) : null).toBe(
       label,
     );
+  });
+});
+
+describe("promptCacheRingPulses", () => {
+  it("pulses when the cache starts running out or goes cold", () => {
+    expect(promptCacheRingPulses("warm", "expiring")).toBe(true);
+    expect(promptCacheRingPulses("expiring", "cold")).toBe(true);
+    expect(promptCacheRingPulses("warm", "cold")).toBe(true);
+  });
+
+  it("stays still on first sight, on a minute tick and on warming back up", () => {
+    expect(promptCacheRingPulses(null, "cold")).toBe(false);
+    expect(promptCacheRingPulses("expiring", "expiring")).toBe(false);
+    expect(promptCacheRingPulses("cold", "warm")).toBe(false);
   });
 });

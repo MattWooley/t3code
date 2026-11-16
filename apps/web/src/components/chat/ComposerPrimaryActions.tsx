@@ -68,6 +68,8 @@ interface ComposerPrimaryActionsProps {
   keepFullHistory?: boolean;
   onToggleKeepFullHistory?: () => void;
   promptCacheThreadRef?: ScopedThreadRef | null;
+  /** Bumped per sent message; each new key sweeps the prompt cache ring back to full once. */
+  promptCacheSweepKey?: number;
 }
 
 const formatPendingPrimaryActionLabel = (input: {
@@ -251,6 +253,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   keepFullHistory = false,
   onToggleKeepFullHistory,
   promptCacheThreadRef = null,
+  promptCacheSweepKey = 0,
 }: ComposerPrimaryActionsProps) {
   const [stopPhase, setStopPhase] = useStopPhase({ runId, canInterrupt, canOperateThread });
   const pointerFocusProps = preserveComposerFocusOnPointerDown
@@ -461,7 +464,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     <Tooltip key="submit">
       <TooltipTrigger render={<span className="relative inline-flex" />}>
         {sendButton}
-        <ComposerPromptCacheRing threadRef={promptCacheThreadRef} />
+        <ComposerPromptCacheRing threadRef={promptCacheThreadRef} sweepKey={promptCacheSweepKey} />
       </TooltipTrigger>
       <TooltipPopup>
         {submitTooltip}

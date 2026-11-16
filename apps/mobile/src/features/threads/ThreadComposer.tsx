@@ -338,7 +338,13 @@ function SendActionButton(props: {
   readonly onSend: (followUp?: ActiveTurnComposerAction) => void;
 }) {
   const promptCache = usePromptCacheIndicator(props.thread);
+  // Bumped per press; each new key sweeps the prompt cache ring back to full once.
+  const [sweepKey, setSweepKey] = useState(0);
   const { presentation } = props;
+  const send = (followUp?: ActiveTurnComposerAction) => {
+    setSweepKey((key) => key + 1);
+    props.onSend(followUp);
+  };
   const button = (
     <ComposerActionButton
       accessibilityLabel={
@@ -346,12 +352,21 @@ function SendActionButton(props: {
           ? props.accessibilityLabel
           : `${props.accessibilityLabel}. ${promptCache.description}`
       }
-      ring={promptCache === null ? undefined : <ComposerPromptCacheRing indicator={promptCache} />}
+      ring={
+        promptCache === null ? undefined : (
+          <ComposerPromptCacheRing
+            // Another thread's ring starts over, so it never animates a change it did not go through.
+            key={props.thread.id}
+            indicator={promptCache}
+            sweepKey={sweepKey}
+          />
+        )
+      }
       size={props.size}
       icon={presentation.icon}
       variant="primary"
       disabled={props.disabled}
-      onPress={() => props.onSend()}
+      onPress={() => send()}
     />
   );
   if (!presentation.offersFollowUpChoice || presentation.action === null || props.disabled) {
@@ -370,9 +385,7 @@ function SendActionButton(props: {
         subtitle: FOLLOW_UP_ACTION_SUBTITLE[action],
         state: action === presentation.action ? ("on" as const) : ("off" as const),
       }))}
-      onPressAction={({ nativeEvent }) =>
-        props.onSend(nativeEvent.event as ActiveTurnComposerAction)
-      }
+      onPressAction={({ nativeEvent }) => send(nativeEvent.event as ActiveTurnComposerAction)}
     >
       {button}
     </Menu>

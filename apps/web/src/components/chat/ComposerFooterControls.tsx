@@ -225,6 +225,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
   promptCacheThreadRef: ScopedThreadRef | null;
+  promptCacheSweepKey: number;
 }) {
   return (
     <>
@@ -256,6 +257,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         keepFullHistory={props.keepFullHistory}
         onToggleKeepFullHistory={props.onToggleKeepFullHistory}
         promptCacheThreadRef={props.promptCacheThreadRef}
+        promptCacheSweepKey={props.promptCacheSweepKey}
       >
         {props.children}
       </ComposerPrimaryActions>

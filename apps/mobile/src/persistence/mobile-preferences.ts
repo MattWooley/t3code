@@ -115,6 +115,7 @@ export interface Preferences {
   readonly codeWordBreak?: boolean;
   readonly mathRenderingEnabled?: boolean;
   readonly promptCacheTimersEnabled?: boolean;
+  readonly promptCacheRingPulseEnabled?: boolean;
   /** Unset means on: crash reports are sent unless the user turns them off. */
   readonly crashReportsEnabled?: boolean;
   readonly connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
@@ -206,6 +207,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     codeWordBreak?: boolean;
     mathRenderingEnabled?: boolean;
     promptCacheTimersEnabled?: boolean;
+    promptCacheRingPulseEnabled?: boolean;
     crashReportsEnabled?: boolean;
     connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
     collapsedProjectGroups?: readonly string[];
@@ -299,6 +301,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     preferences.mathRenderingEnabled = parsed.mathRenderingEnabled;
   if (typeof parsed.promptCacheTimersEnabled === "boolean")
     preferences.promptCacheTimersEnabled = parsed.promptCacheTimersEnabled;
+  if (typeof parsed.promptCacheRingPulseEnabled === "boolean")
+    preferences.promptCacheRingPulseEnabled = parsed.promptCacheRingPulseEnabled;
   if (typeof parsed.crashReportsEnabled === "boolean") {
     preferences.crashReportsEnabled = parsed.crashReportsEnabled;
   }

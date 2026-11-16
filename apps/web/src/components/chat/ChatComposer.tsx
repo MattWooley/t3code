@@ -2131,6 +2131,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const submitComposerRef = useRef<
     (dispatchMode?: ComposerDispatchMode, submissionIntent?: ComposerSubmissionIntent) => void
   >(() => {});
+  const [promptCacheSweepKey, setPromptCacheSweepKey] = useState(0);
   const submitComposer = (
     event?: { preventDefault: () => void },
     dispatchMode?: ComposerDispatchMode,
@@ -2195,6 +2196,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     });
     setComposerSubmissionError(submission.validationMessage);
     if (!submission.didDispatch) return false;
+    setPromptCacheSweepKey((key) => key + 1);
     onTypingGuardSend();
     if (shouldBlurMobileComposerOnSubmit()) {
       blurMobileComposerAfterSend();
@@ -3792,6 +3794,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     keepFullHistory={props.keepFullHistory}
                     onToggleKeepFullHistory={props.onToggleKeepFullHistory}
                     promptCacheThreadRef={promptCacheThreadRef}
+                    promptCacheSweepKey={promptCacheSweepKey}
                   >
                     {speechInput.available ? (
                       <>

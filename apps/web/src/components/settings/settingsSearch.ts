@@ -472,6 +472,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["claude cache warm cold expiry countdown ttl sidebar tokens"],
   },
   {
+    id: "prompt-cache-ring-pulse",
+    title: msg("Pulse the prompt cache ring"),
+    to: "/settings/general",
+    searchTerms: ["claude cache send button animation motion highlight expiring cold"],
+  },
+  {
     id: "boring-sidebar",
     title: "Boring sidebar (group by project)",
     to: "/settings/labs",

@@ -393,3 +393,14 @@ export function presentPromptCacheIndicator(cache: PromptCacheState): PromptCach
     description: `Prompt cache warm for ${formatPromptCacheRemaining(cache.remainingMs)}`,
   };
 }
+
+/**
+ * Whether a ring that showed `previous` pulses once on turning to `next`: only when the cache
+ * starts running out or goes cold, never on first sight or on warming back up.
+ */
+export function promptCacheRingPulses(
+  previous: PromptCacheIndicator["tone"] | null,
+  next: PromptCacheIndicator["tone"],
+): boolean {
+  return previous !== null && previous !== next && next !== "warm";
+}

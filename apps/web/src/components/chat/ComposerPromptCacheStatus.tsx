@@ -2,8 +2,11 @@ import { toServerClock } from "@t3tools/client-runtime/clock";
 import {
   derivePromptCacheStateForMinute,
   presentPromptCacheIndicator,
+  promptCacheRingPulses,
+  type PromptCacheIndicator,
 } from "@t3tools/client-runtime/state/context-window";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useState } from "react";
 
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -29,29 +32,81 @@ const RING_TONE_CLASS_NAME = {
 };
 
 /** Draws around its positioned parent: full while warm, draining when expiring, dashed when cold. */
-export function ComposerPromptCacheRing(props: { threadRef: ScopedThreadRef | null }) {
+export function ComposerPromptCacheRing(props: {
+  threadRef: ScopedThreadRef | null;
+  /** Bumped per sent message; each new key sweeps the ring back to full once. */
+  sweepKey?: number;
+}) {
   const indicator = usePromptCacheIndicator(props.threadRef);
-  if (indicator === null) return null;
+  if (indicator === null || props.threadRef === null) return null;
   return (
-    <svg
-      aria-hidden
-      data-prompt-cache-status={indicator.tone}
-      viewBox="0 0 40 40"
-      className="pointer-events-none absolute -inset-1 size-[calc(100%+0.5rem)] -rotate-90"
-    >
-      <circle
-        cx="20"
-        cy="20"
-        r="18.75"
-        fill="none"
-        strokeWidth="1.75"
-        pathLength={100}
-        strokeDasharray={
-          indicator.tone === "cold" ? "4.2 4.133" : `${indicator.fraction * 100} 100`
-        }
-        className={RING_TONE_CLASS_NAME[indicator.tone]}
-      />
-    </svg>
+    <PromptCacheRing
+      // Another thread's ring starts over, so it never animates a change it did not go through.
+      key={`${props.threadRef.environmentId}:${props.threadRef.threadId}`}
+      indicator={indicator}
+      sweepKey={props.sweepKey ?? 0}
+    />
+  );
+}
+
+function PromptCacheRing(props: { indicator: PromptCacheIndicator; sweepKey: number }) {
+  const { tone, fraction } = props.indicator;
+  const pulseEnabled = useClientSettings((settings) => settings.promptCacheRingPulseEnabled);
+  // Sends from before this ring appeared do not sweep it.
+  const [firstSweepKey] = useState(props.sweepKey);
+  const [seen, setSeen] = useState({ tone, pulseKey: 0 });
+  if (seen.tone !== tone) {
+    const pulses = pulseEnabled && promptCacheRingPulses(seen.tone, tone);
+    setSeen({ tone, pulseKey: seen.pulseKey + (pulses ? 1 : 0) });
+  }
+  return (
+    <>
+      <svg
+        aria-hidden
+        data-prompt-cache-status={tone}
+        viewBox="0 0 40 40"
+        className="pointer-events-none absolute -inset-1 size-[calc(100%+0.5rem)] -rotate-90"
+      >
+        <circle
+          cx="20"
+          cy="20"
+          r="18.75"
+          fill="none"
+          strokeWidth="1.75"
+          pathLength={100}
+          strokeDasharray={tone === "cold" ? "4.2 4.133" : `${fraction * 100} 100`}
+          className={RING_TONE_CLASS_NAME[tone]}
+        />
+        {props.sweepKey !== firstSweepKey ? (
+          // Remounting per send restarts the one-shot sweep; it ends invisible. Sending rewarms
+          // the cache, so the sweep is green whatever the ring shows. Reduced motion skips it.
+          <circle
+            key={props.sweepKey}
+            data-prompt-cache-sweep
+            cx="20"
+            cy="20"
+            r="18.75"
+            fill="none"
+            strokeWidth="2.5"
+            pathLength={100}
+            strokeDasharray="100 100"
+            className="stroke-success opacity-0 motion-safe:animate-prompt-cache-sweep"
+          />
+        ) : null}
+      </svg>
+      {seen.pulseKey > 0 ? (
+        // An HTML ring, so the one-shot pulse runs on the compositor (scale and opacity only).
+        <span
+          key={seen.pulseKey}
+          aria-hidden
+          data-prompt-cache-pulse
+          className={cn(
+            "pointer-events-none absolute -inset-1 rounded-full border-2 opacity-0 motion-safe:animate-prompt-cache-pulse",
+            tone === "cold" ? "border-muted-foreground/60" : "border-warning-foreground",
+          )}
+        />
+      ) : null}
+    </>
   );
 }
 
